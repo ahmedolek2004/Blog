@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue';
 import { auth } from '../firebase/config';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, onAuthStateChanged } from 'firebase/auth';
 import { useRouter, RouterLink } from 'vue-router';
 
 const email = ref('');
@@ -13,6 +13,13 @@ const handleLogin = async () => {
   error.value = null;
   try {
     await signInWithEmailAndPassword(auth, email.value, password.value);
+    // الانتظار حتى يتم تحديث حالة المصادقة قبل إعادة التوجيه
+    await new Promise((resolve) => {
+      const unsubscribe = onAuthStateChanged(auth, (user) => {
+        unsubscribe();
+        resolve();
+      });
+    });
     router.push('/');
   } catch {
     error.value = "Incorrect email or password.";

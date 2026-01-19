@@ -1,7 +1,8 @@
 <script setup>
 import { ref } from 'vue';
-import { auth } from '../firebase/config';
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { auth, db } from '../firebase/config';
+import { createUserWithEmailAndPassword, updateProfile, onAuthStateChanged } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
 import { useRouter, RouterLink } from 'vue-router';
 
 const name = ref('');
@@ -24,6 +25,22 @@ const handleRegister = async () => {
     if(res.user && name.value){
         await updateProfile(res.user, { displayName: name.value });
     }
+    
+    // إضافة المستخدم كمسؤول في Firestore
+    await setDoc(doc(db, 'users', res.user.uid), {
+      email: res.user.email,
+      displayName: name.value,
+      role: 'admin',
+      createdAt: new Date()
+    });
+    
+    // الانتظار حتى يتم تحديث حالة المصادقة قبل إعادة التوجيه
+    await new Promise((resolve) => {
+      const unsubscribe = onAuthStateChanged(auth, (user) => {
+        unsubscribe();
+        resolve();
+      });
+    });
     router.push('/');
   } catch (err) {
     error.value = err.message;

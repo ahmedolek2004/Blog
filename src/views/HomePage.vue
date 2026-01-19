@@ -1,87 +1,110 @@
 <script setup>
-import { auth } from '../firebase/config';
-import { signOut, onAuthStateChanged } from 'firebase/auth';
-import { useRouter } from 'vue-router';
-import { ref, onMounted } from 'vue';
+  import { db } from '../firebase/config';
+  import { useRouter } from 'vue-router';
+  import { ref, onMounted } from 'vue';
+  import { collection, query, orderBy, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
+  import Navbar from '../components/Navbar.vue';
+  import { useAuth } from '../composables/useAuth';
 
-const router = useRouter();
-const userEmail = ref('');
+  const posts = ref([]);
+  const router = useRouter();
+  const { currentUser, isAdmin } = useAuth();
 
-// التأكد من جلب بيانات المستخدم عند تحميل الصفحة
-onMounted(() => {
-  onAuthStateChanged(auth, (user) => {
-    if (user) {
-      userEmail.value = user.email;
-    } else {
+  // 1. جلب المنشورات وترتيبها (الأحدث أولاً)
+  const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
+
+  onSnapshot(q, (snapshot) => {
+    posts.value = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  });
+
+  // 2. التحقق من حالة المستخدم
+  onMounted(() => {
+    if (!currentUser.value) {
       router.push('/login');
     }
   });
-});
 
-const logout = async () => {
-  try {
-    await signOut(auth);
-    router.push('/login');
-  } catch (error) {
-    console.error("Error signing out:", error);
-  }
-};
-</script>
+  // 3. دالة الحذف مع التأكيد
+  const handleDelete = async (postId, authorId) => {
+    if (!currentUser.value) return;
+    
+    const isOwner = currentUser.value.uid === authorId;
+    
+    if (!isOwner && !isAdmin.value) {
+      alert('You do not have permission to delete this post');
+      return;
+    }
 
-<template>
-  <div class="bg-gray-900 min-h-screen">
-    <header class="absolute inset-x-0 top-0 z-50">
-      <nav aria-label="Global" class="flex items-center justify-between p-6 lg:px-8">
-        <div class="flex lg:flex-1">
-          <a href="#" class="-m-1.5 p-1.5">
-            <span class="sr-only">Your Company</span>
-            <img src="https://tailwindcss.com/plus-assets/img/logos/mark.svg?color=indigo&shade=500" alt="" class="h-8 w-auto" />
-          </a>
-        </div>
+    if (confirm("Are you sure you want to delete this post?")) {
+      try {
+        await deleteDoc(doc(db, 'posts', postId));
+      } catch (error) {
+        console.error('Error deleting post:', error);
+        alert('Error deleting post');
+      }
+    }
+  };
 
-        <div class="hidden lg:flex lg:gap-x-12">
-          <a href="#" class="text-sm/6 font-semibold text-white">Product</a>
-          <a href="#" class="text-sm/6 font-semibold text-white">Features</a>
-          <a href="#" class="text-sm/6 font-semibold text-white">Marketplace</a>
-          <a href="#" class="text-sm/6 font-semibold text-white">Company</a>
-        </div>
+  const canEdit = (post) => {
+    if (!currentUser.value) return false;
+    return currentUser.value.uid === post.authorId || isAdmin.value;
+  };
 
-        <div class="hidden lg:flex lg:flex-1 lg:justify-end lg:items-center lg:gap-x-4">
-          <span v-if="userEmail" class="text-gray-300 text-sm italic">
-            {{ userEmail }}
-          </span>
-          <button @click="logout" class="text-sm/6 font-semibold text-white bg-red-600 px-4 py-1 rounded-md hover:bg-red-500 transition">
-            Sign Out <span aria-hidden="true">&rarr;</span>
-          </button>
-        </div>
-      </nav>
-    </header>
+  const canDelete = (post) => {
+    if (!currentUser.value) return false;
+    return currentUser.value.uid === post.authorId || isAdmin.value;
+  };
 
-    <div class="relative isolate px-6 pt-14 lg:px-8">
-      <div aria-hidden="true" class="absolute inset-x-0 -top-40 -z-10 transform-gpu overflow-hidden blur-3xl sm:-top-80">
-        <div style="clip-path: polygon(74.1% 44.1%, 100% 61.6%, 97.5% 26.9%, 85.5% 0.1%, 80.7% 2%, 72.5% 32.5%, 60.2% 62.4%, 52.4% 68.1%, 47.5% 58.3%, 45.2% 34.5%, 27.5% 76.7%, 0.1% 64.9%, 17.9% 100%, 27.6% 76.8%, 76.1% 97.7%, 74.1% 44.1%)" class="relative left-[calc(50%-11rem)] aspect-1155/678 w-144.5 -translate-x-1/2 rotate-30 bg-gradient-to-tr from-[#ff80b5] to-[#9089fc] opacity-30 sm:left-[calc(50%-30rem)] sm:w-288.75"></div>
-      </div>
+  const formatDate = (timestamp) => {
+    if (!timestamp) return 'N/A';
+    if (timestamp.toDate) {
+      return timestamp.toDate().toLocaleString();
+    }
+    return new Date(timestamp).toLocaleString();
+  };
+  </script>
 
-      <div class="mx-auto max-w-2xl py-32 sm:py-48 lg:py-56">
-        <div class="text-center">
-          <h1 class="text-5xl font-semibold tracking-tight text-white sm:text-7xl">
-            Data to enrich your online business
-          </h1>
-          <p class="mt-8 text-lg font-medium text-gray-400 sm:text-xl/8">
-            Welcome back! You are successfully logged in to your dashboard.
-          </p>
+  <template>
+    <div class="bg-gray-900 min-h-screen text-white">
+      <Navbar />
 
-          <div class="mt-10 block lg:hidden">
-             <p class="text-indigo-400 mb-4">{{ userEmail }}</p>
-             <button @click="logout" class="rounded-md bg-red-500 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-400">Sign Out</button>
-          </div>
+      <div class="max-w-4xl mx-auto py-12 px-6">
+        <h2 class="text-4xl font-bold mb-10">Latest Feed</h2>
 
-          <div class="mt-10 flex items-center justify-center gap-x-6">
-            <a href="#" class="rounded-md bg-indigo-500 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">Get started</a>
-            <a href="#" class="text-sm/6 font-semibold text-white">Learn more <span aria-hidden="true">→</span></a>
+        <div v-if="posts.length === 0" class="text-gray-500 text-center py-8">No posts found.</div>
+
+        <div class="space-y-8">
+          <div v-for="post in posts" :key="post.id" class="bg-gray-800 p-6 rounded-xl border border-gray-700 relative">
+            <h3 class="text-2xl font-bold text-indigo-400 mb-2">{{ post.title }}</h3>
+            <p class="text-gray-300 mb-4 whitespace-pre-wrap">{{ post.content }}</p>
+
+            <div class="flex justify-between items-center text-sm text-gray-500 pt-4 border-t border-gray-700">
+              <span>By: {{ post.authorEmail }}</span>
+              <div class="flex gap-4">
+                <span>Created: {{ formatDate(post.createdAt) }}</span>
+                <span v-if="post.updatedAt" class="text-gray-600">Updated: {{ formatDate(post.updatedAt) }}</span>
+              </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div v-if="canEdit(post) || canDelete(post)" class="absolute top-6 right-6 flex gap-2">
+              <router-link
+                v-if="canEdit(post)"
+                :to="`/edit/${post.id}`"
+                class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 rounded text-sm transition"
+              >
+                Edit
+              </router-link>
+              <button
+                v-if="canDelete(post)"
+                @click="handleDelete(post.id, post.authorId)"
+                class="px-3 py-1 bg-red-600 hover:bg-red-500 rounded text-sm transition"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
-</template>
+  </template>
